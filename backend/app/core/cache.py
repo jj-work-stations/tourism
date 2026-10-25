@@ -34,6 +34,15 @@ class Cache:
             await self._client.aclose()
             self._client = None
 
+    async def ping(self) -> bool:
+        """Return whether Redis is currently reachable."""
+        if self._client is None:
+            return False
+        try:
+            return bool(await self._client.ping())
+        except Exception:
+            return False
+
     async def get_json(self, key: str) -> Any | None:
         if self._client is not None:
             try:

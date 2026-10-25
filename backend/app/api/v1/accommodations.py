@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from datetime import UTC, date, datetime, time
+from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -161,6 +161,27 @@ async def list_accommodations(
         )
     ).scalars().all()
     return [accommodation_card(a) for a in rows]
+
+
+@router.get(
+    "/slug/{slug}",
+    response_model=AccommodationDetail,
+    summary="جزئیات اقامتگاه با اسلاگ",
+)
+async def get_accommodation_by_slug(
+    slug: str,
+    check_in: date | None = None,
+    check_out: date | None = None,
+    guests: int = Query(default=1, ge=1, le=20),
+    rooms_count: int = Query(default=1, ge=1, le=10),
+    db: AsyncSession = Depends(get_db),
+) -> AccommodationDetail:
+    accommodation_id = (
+        await db.execute(select(Accommodation.id).where(Accommodation.slug == slug))
+    ).scalar_one_or_none()
+    if accommodation_id is None:
+        raise NotFoundError("اقامتگاه یافت نشد.")
+    return await get_accommodation(accommodation_id, check_in, check_out, guests, rooms_count, db)
 
 
 @router.get("/{accommodation_id}", response_model=AccommodationDetail, summary="جزئیات اقامتگاه")

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from typing import Any
-from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -176,7 +175,6 @@ async def build_plan(
 
     start = payload.start_date or date.today() + timedelta(days=1)
     attractions_per_day = PACE_ATTRACTIONS[payload.pace]
-    breakfast_cost = 0
     food_cost = 0
     activity_cost = 0
     attractions_cursor = 0

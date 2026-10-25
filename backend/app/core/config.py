@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -40,22 +40,35 @@ class Settings(BaseSettings):
     otp_max_attempts: int = 5
 
     # HTTP
-    cors_origins: list[str] = Field(
+    # NoDecode keeps pydantic-settings from JSON-decoding the raw env value so
+    # the split_csv validator below can accept plain comma-separated lists.
+    cors_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:3000"]
     )
-    allowed_hosts: list[str] = Field(default_factory=lambda: ["*"])
+    allowed_hosts: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["*"])
     frontend_url: str = "http://localhost:3000"
+    max_request_bytes: int = 2_000_000
+
+    # Rate limiting
+    rate_limit_enabled: bool = True
+    rate_limit_requests: int = 240
+    rate_limit_window_seconds: int = 60
+    auth_rate_limit_requests: int = 20
 
     # Data / demo
     auto_create_schema: bool = True
     seed_on_startup: bool = True
     default_currency: str = "IRT"
 
-    # AI (optional OpenAI-compatible provider). A deterministic planner is used
-    # when no key is configured, so the product works offline.
+    # AI. The product works offline with a deterministic planner; configure one
+    # of the providers below to enable conversational polishing.
+    # provider: openai | openai_compatible | anthropic | gemini | none
+    ai_provider: Literal["openai", "openai_compatible", "anthropic", "gemini", "none"] = "none"
     ai_api_key: str | None = None
-    ai_base_url: str = "https://api.openai.com/v1"
+    ai_base_url: str | None = None
     ai_model: str = "gpt-4o-mini"
+    ai_timeout_seconds: float = 20.0
+    ai_max_tokens: int = 450
 
     @field_validator("cors_origins", "allowed_hosts", mode="before")
     @classmethod

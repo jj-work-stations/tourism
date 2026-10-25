@@ -28,9 +28,8 @@ class TransportSearchRequest(ORMModel):
     def validate_route(self) -> TransportSearchRequest:
         if self.origin_id == self.destination_id:
             raise ValueError("مبدأ و مقصد نمی‌توانند یکسان باشند.")
-        if self.max_price is not None and self.min_price is not None:
-            if self.max_price < self.min_price:
-                raise ValueError("حداکثر قیمت از حداقل قیمت کمتر است.")
+        if self.max_price is not None and self.min_price is not None and self.max_price < self.min_price:
+            raise ValueError("حداکثر قیمت از حداقل قیمت کمتر است.")
         return self
 
 

@@ -18,6 +18,7 @@ from app.core.cache import cache
 from app.core.config import settings
 from app.core.errors import install_error_handlers
 from app.core.logging import configure_logging
+from app.core.rate_limit import BodySizeLimitMiddleware, RateLimitMiddleware
 from app.db.base import Base
 from app.db.seed import seed_all
 from app.db.session import SessionLocal, engine
@@ -38,10 +39,19 @@ async def _expiry_loop() -> None:
             logger.exception("booking expiry loop failed")
 
 
+DEFAULT_SECRET = "change-me-in-production-a-long-random-secret-value"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging(settings.debug)
     logger.info("starting %s (%s)", settings.app_name, settings.environment)
+    if settings.is_production and settings.jwt_secret_key == DEFAULT_SECRET:
+        raise RuntimeError("JWT_SECRET_KEY must be configured in production.")
+    if settings.is_production and settings.auto_create_schema:
+        logger.warning("AUTO_CREATE_SCHEMA is enabled in production; prefer Alembic migrations.")
+    if settings.is_production and settings.seed_on_startup:
+        logger.warning("SEED_ON_STARTUP is enabled in production; disable it for real deployments.")
     if settings.auto_create_schema:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
@@ -87,6 +97,9 @@ app.add_middleware(
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 if "*" not in settings.allowed_hosts:
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
+# The last added middleware runs first: reject oversized bodies, then rate limit.
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(BodySizeLimitMiddleware)
 
 install_error_handlers(app)
 
@@ -116,6 +129,13 @@ async def observability(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(self), microphone=(), camera=()"
+    if settings.is_production:
+        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+    if not request.url.path.startswith(("/docs", "/redoc", "/api/v1/openapi.json")):
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+        )
     if not settings.debug:
         logger.info(
             "request",
@@ -152,7 +172,14 @@ async def health() -> dict:
             await db.execute(text("SELECT 1"))
     except Exception:
         database = "error"
-    return {"status": "ok" if database == "ok" else "degraded", "database": database, "cache": "ok"}
+    cache_status = "ok" if await cache.ping() else "degraded"
+    healthy = database == "ok"
+    return {
+        "status": "ok" if healthy else "degraded",
+        "database": database,
+        "cache": cache_status,
+        "version": settings.app_version,
+    }
 
 
 @app.get("/health/live", tags=["Health"], summary="Liveness probe")

@@ -49,17 +49,18 @@ class BookingCreate(ORMModel):
 
     @model_validator(mode="after")
     def validate_payload(self) -> BookingCreate:
-        if self.booking_type == BookingType.TRANSPORT:
-            if not self.transport_offer_id or not self.travel_date:
-                raise ValueError("برای بلیت حمل‌ونقل، شناسه سفر و تاریخ سفر الزامی است.")
-        elif self.booking_type == BookingType.ACCOMMODATION:
-            if not self.room_id or not self.check_in or not self.check_out:
-                raise ValueError("برای اقامتگاه، اتاق و تاریخ ورود و خروج الزامی است.")
-            if self.check_out <= self.check_in:
-                raise ValueError("تاریخ خروج باید بعد از تاریخ ورود باشد.")
-        elif self.booking_type == BookingType.EXPERIENCE:
-            if not self.experience_id or not self.travel_date:
-                raise ValueError("برای تجربه، شناسه تجربه و تاریخ الزامی است.")
+        match self.booking_type:
+            case BookingType.TRANSPORT:
+                if not self.transport_offer_id or not self.travel_date:
+                    raise ValueError("برای بلیت حمل‌ونقل، شناسه سفر و تاریخ سفر الزامی است.")
+            case BookingType.ACCOMMODATION:
+                if not self.room_id or not self.check_in or not self.check_out:
+                    raise ValueError("برای اقامتگاه، اتاق و تاریخ ورود و خروج الزامی است.")
+                if self.check_out <= self.check_in:
+                    raise ValueError("تاریخ خروج باید بعد از تاریخ ورود باشد.")
+            case BookingType.EXPERIENCE:
+                if not self.experience_id or not self.travel_date:
+                    raise ValueError("برای تجربه، شناسه تجربه و تاریخ الزامی است.")
         return self
 
 

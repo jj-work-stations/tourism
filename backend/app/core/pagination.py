@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-from typing import Generic, TypeVar
-
 from fastapi import Query
 from pydantic import BaseModel, Field
-
-T = TypeVar("T")
 
 
 class PageParams:
@@ -26,7 +22,7 @@ class PageParams:
         return self.page_size
 
 
-class Page(BaseModel, Generic[T]):
+class Page[T](BaseModel):
     items: list[T]
     total: int = Field(ge=0)
     page: int = Field(ge=1)

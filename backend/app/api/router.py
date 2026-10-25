@@ -17,6 +17,7 @@ from app.api.v1 import (
     provider,
     recommendations,
     reviews,
+    search,
     support,
     transportation,
     trips,
@@ -29,6 +30,7 @@ api_router.include_router(auth.router)
 api_router.include_router(users.router)
 api_router.include_router(destinations.router)
 api_router.include_router(discovery.router)
+api_router.include_router(search.router)
 api_router.include_router(transportation.router)
 api_router.include_router(accommodations.router)
 api_router.include_router(bookings.router)

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 from datetime import date, timedelta
-from typing import Any
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
@@ -29,6 +28,29 @@ from app.services.recommendations import recommend_destinations
 router = APIRouter(prefix="/ai", tags=["AI Travel Assistant"])
 
 PERSIAN_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+
+PERSIAN_DAY_WORDS: dict[str, int] = {
+    "یک": 1,
+    "دو": 2,
+    "سه": 3,
+    "چهار": 4,
+    "پنج": 5,
+    "شش": 6,
+    "هفت": 7,
+    "هشت": 8,
+    "نه": 9,
+    "ده": 10,
+    "یازده": 11,
+    "دوازده": 12,
+    "سیزده": 13,
+    "چهارده": 14,
+    "پانزده": 15,
+    "شانزده": 16,
+    "هفده": 17,
+    "هجده": 18,
+    "نوزده": 19,
+    "بیست": 20,
+}
 
 INTEREST_KEYWORDS: dict[str, str] = {
     "تاریخ": "history",
@@ -63,7 +85,16 @@ def _normalize_digits(text: str) -> str:
 
 def _parse_days(text: str) -> int | None:
     match = re.search(r"(\d+)\s*(?:روز|day|days)", text, re.IGNORECASE)
-    return int(match.group(1)) if match else None
+    if match:
+        return int(match.group(1))
+    # Persian speakers often write the duration as a word ("سه روز").
+    word = re.search(r"(یک|دو|سه|چهار|پنج|شش|ششت|هفت|هشت|نه|ده|یازده|دوازده|سیزده|چهارده|پانزده|شانزده|هفده|هجده|نوزده|بیست)\s*روز", text)
+    if word:
+        return PERSIAN_DAY_WORDS[word.group(1)]
+    weeks = re.search(r"(یک|دو|سه|چهار)\s*(?:هفته|week|weeks)", text, re.IGNORECASE)
+    if weeks:
+        return PERSIAN_DAY_WORDS[weeks.group(1)] * 7
+    return None
 
 
 def _parse_budget(text: str) -> int | None:

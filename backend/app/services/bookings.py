@@ -6,11 +6,10 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.config import settings
 from app.core.errors import AppError, ConflictError, ForbiddenError, NotFoundError
 from app.db.models import (
     Accommodation,

@@ -8,7 +8,6 @@ from app.db.models import User
 from app.db.session import get_db
 from app.schemas.common import Message
 from app.schemas.engagement import EventBatch, EventCreate
-from app.services.bookings import track_event
 
 router = APIRouter(prefix="/events", tags=["Analytics"])
 

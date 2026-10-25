@@ -19,10 +19,8 @@ from app.db.models.enums import (
 if TYPE_CHECKING:
     from app.db.models.catalog import (
         Accommodation,
-        Attraction,
         Destination,
         Experience,
-        Restaurant,
         Room,
         TransportOffer,
     )

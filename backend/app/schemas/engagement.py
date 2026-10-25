@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import Field, model_validator
+from pydantic import Field
 
 from app.db.models.enums import FavoriteEntity, ReviewEntity
 from app.schemas.common import ORMModel, UserBrief

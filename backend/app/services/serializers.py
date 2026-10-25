@@ -15,8 +15,8 @@ from app.db.models import (
     Destination,
     Experience,
     Favorite,
-    Review,
     Restaurant,
+    Review,
     Trip,
 )
 from app.schemas.accommodation import AccommodationCard, AccommodationDetail

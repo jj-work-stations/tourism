@@ -7,7 +7,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
-from app.core.errors import ConflictError, NotFoundError
+from app.core.errors import NotFoundError
 from app.core.pagination import Page, PageParams
 from app.db.models import Favorite, FavoriteEntity, User
 from app.db.session import get_db

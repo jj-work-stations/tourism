@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from uuid import UUID
 
 import jwt
 from fastapi import APIRouter, Depends, status
@@ -138,7 +139,11 @@ async def refresh(payload: RefreshRequest, db: AsyncSession = Depends(get_db)) -
         data = decode_token(payload.refresh_token, expected_type=REFRESH_TOKEN)
     except jwt.PyJWTError as exc:
         raise UnauthorizedError("توکن تمدید معتبر نیست.") from exc
-    user = await db.get(User, data["sub"])
+    try:
+        user_id = UUID(str(data["sub"]))
+    except (KeyError, ValueError) as exc:
+        raise UnauthorizedError("توکن تمدید معتبر نیست.") from exc
+    user = await db.get(User, user_id)
     if user is None or not user.is_active:
         raise UnauthorizedError("کاربر معتبر نیست.")
     return _tokens(user)

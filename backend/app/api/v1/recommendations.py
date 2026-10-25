@@ -3,6 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -71,8 +72,6 @@ async def similar(
     base = await db.get(Destination, destination_id)
     if base is None:
         return RecommendationResponse(personalized=False, items=[])
-    from sqlalchemy import select
-
     candidates = (
         await db.execute(
             select(Destination).where(
@@ -81,12 +80,13 @@ async def similar(
             )
         )
     ).scalars().all()
+    candidate_ids = {candidate.id for candidate in candidates}
     result = await recommend_destinations(db, None, limit=50)
-    filtered = [item for item in result.items if item.destination.id != base.id][:limit]
+    filtered = [
+        item for item in result.items if item.destination.id in candidate_ids
+    ][:limit]
     if not filtered:
         filtered = [
-            item
-            for item in result.items
-            if any(tag in base.tags for tag in item.tags)
+            item for item in result.items if item.destination.id != base.id
         ][:limit]
     return RecommendationResponse(personalized=False, items=filtered)

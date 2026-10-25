@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import secrets
-from datetime import date, time as dt_time, timedelta
+from datetime import date, timedelta
+from datetime import time as dt_time
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
@@ -13,7 +14,6 @@ from app.core.deps import get_current_user, get_optional_user
 from app.core.errors import ForbiddenError, NotFoundError
 from app.core.pagination import Page, PageParams
 from app.db.models import (
-    Booking,
     BookingStatus,
     Destination,
     Role,
@@ -24,9 +24,9 @@ from app.db.models import (
     User,
 )
 from app.db.session import get_db
+from app.schemas.ai import PlanTripRequest
 from app.schemas.booking import BookingSummary
 from app.schemas.common import DestinationBrief, Message
-from app.schemas.ai import PlanTripRequest
 from app.schemas.trip import (
     AutoPlanRequest,
     TripActivityCreate,
@@ -50,7 +50,14 @@ TRIP_LOADS = (
 
 async def load_trip(db: AsyncSession, trip_id: UUID) -> Trip:
     trip = (
-        await db.execute(select(Trip).options(*TRIP_LOADS).where(Trip.id == trip_id))
+        await db.execute(
+            select(Trip)
+            .options(*TRIP_LOADS)
+            .where(Trip.id == trip_id)
+            # Refresh relationships that may already be cached on a
+            # long-lived session (expire_on_commit=False).
+            .execution_options(populate_existing=True)
+        )
     ).scalar_one_or_none()
     if trip is None:
         raise NotFoundError("سفر یافت نشد.")

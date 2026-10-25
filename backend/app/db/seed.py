@@ -805,7 +805,6 @@ async def seed_demo_activity(db: AsyncSession, users: dict[str, User]) -> None:
     destinations = {d.slug: d for d in (await db.execute(select(Destination))).scalars().all()}
     accommodations = {a.slug: a for a in (await db.execute(select(Accommodation))).scalars().all()}
     experiences = {e.slug: e for e in (await db.execute(select(Experience))).scalars().all()}
-    attractions = {a.slug: a for a in (await db.execute(select(Attraction))).scalars().all()}
     rooms = list((await db.execute(select(Room))).scalars().all())
     offers = list((await db.execute(select(TransportOffer).limit(10))).scalars().all())
 
@@ -893,7 +892,7 @@ async def seed_demo_activity(db: AsyncSession, users: dict[str, User]) -> None:
                 unit_price=offer.price,
                 subtotal=offer.price * 2,
                 total=offer.price * 2,
-                title=f"پرواز تهران به شیراز",
+                title="پرواز تهران به شیراز",
                 cancellation_deadline=offer.departure_at - timedelta(hours=24),
                 confirmed_at=NOW - timedelta(days=35),
                 details={"provider": "ماهان ایر", "departure_at": offer.departure_at.isoformat(), "arrival_at": offer.arrival_at.isoformat()},

@@ -1,9 +1,11 @@
 import { useAuth } from "./auth-store";
+import type { AuthTokens } from "./auth-store";
 
-export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
 const SERVER_API_URL =
-  process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || API_URL;
+  process.env.INTERNAL_API_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://127.0.0.1:8000/api/v1";
 
 export class ApiError extends Error {
   status: number;
@@ -20,7 +22,12 @@ export class ApiError extends Error {
 type Query = Record<string, string | number | boolean | null | undefined>;
 
 function buildUrl(base: string, path: string, query?: Query) {
-  const url = new URL(`${base}${path.startsWith("/") ? path : `/${path}`}`);
+  const normalized = `${base.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
+  // Relative bases (the default) are resolved against the current origin in
+  // the browser. This keeps the API same-origin behind Next's rewrite proxy.
+  const origin =
+    typeof window === "undefined" ? "http://127.0.0.1:8000" : window.location.origin;
+  const url = new URL(normalized, origin);
   if (query) {
     for (const [key, value] of Object.entries(query)) {
       if (value !== undefined && value !== null && value !== "") {
@@ -50,23 +57,65 @@ function errorMessage(status: number, data: unknown): string {
   return "درخواست انجام نشد.";
 }
 
+let refreshPromise: Promise<boolean> | null = null;
+
+/** Attempt to rotate the access token once, sharing an in-flight request. */
+async function refreshSession(): Promise<boolean> {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    const state = useAuth.getState();
+    const refreshToken = state.tokens?.refresh_token;
+    if (!refreshToken) return false;
+    try {
+      const response = await fetch(buildUrl(API_URL, "/auth/refresh"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      if (!response.ok) {
+        state.clear();
+        return false;
+      }
+      const tokens = (await response.json()) as AuthTokens;
+      if (state.user) state.setSession(state.user, tokens);
+      else state.clear();
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
+}
+
 async function request<T>(
   path: string,
   options: RequestInit & { query?: Query; auth?: boolean } = {},
 ): Promise<T> {
   const { query, auth = false, headers, ...init } = options;
-  const finalHeaders = new Headers(headers);
-  if (init.body && !(init.body instanceof FormData)) {
-    finalHeaders.set("Content-Type", "application/json");
+
+  const execute = async (): Promise<Response> => {
+    const finalHeaders = new Headers(headers);
+    if (init.body && !(init.body instanceof FormData)) {
+      finalHeaders.set("Content-Type", "application/json");
+    }
+    if (auth) {
+      const token = useAuth.getState().tokens?.access_token;
+      if (token) finalHeaders.set("Authorization", `Bearer ${token}`);
+    }
+    return fetch(buildUrl(API_URL, path, query), {
+      ...init,
+      headers: finalHeaders,
+    });
+  };
+
+  let response = await execute();
+  if (response.status === 401 && auth) {
+    const refreshed = await refreshSession();
+    if (refreshed) response = await execute();
+    else useAuth.getState().clear();
   }
-  if (auth) {
-    const token = useAuth.getState().tokens?.access_token;
-    if (token) finalHeaders.set("Authorization", `Bearer ${token}`);
-  }
-  const response = await fetch(buildUrl(API_URL, path, query), {
-    ...init,
-    headers: finalHeaders,
-  });
   if (response.status === 204) return undefined as T;
   const text = await response.text();
   let data: unknown = null;
@@ -76,11 +125,11 @@ async function request<T>(
     data = text;
   }
   if (!response.ok) {
-    if (response.status === 401 && auth) useAuth.getState().clear();
     throw new ApiError(errorMessage(response.status, data), response.status, data);
   }
   return data as T;
 }
+
 
 export const api = {
   get: <T>(path: string, query?: Query, auth = false) =>

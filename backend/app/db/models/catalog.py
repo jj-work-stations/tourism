@@ -18,7 +18,12 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
-from app.db.models.enums import AccommodationType, AttractionCategory, ExperienceCategory, TransportType
+from app.db.models.enums import (
+    AccommodationType,
+    AttractionCategory,
+    ExperienceCategory,
+    TransportType,
+)
 
 if TYPE_CHECKING:
     from app.db.models.user import Provider

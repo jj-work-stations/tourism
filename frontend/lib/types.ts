@@ -74,14 +74,25 @@ export interface Attraction {
 
 export interface Restaurant {
   id: UUID;
+  slug: string;
   name: string;
-  destination_name: string;
+  destination_id: UUID;
+  destination_name?: string | null;
+  description: string;
+  image_url: string;
   cuisine: string;
-  price_level: number;
+  price_range: number;
+  average_price: number;
   rating: number;
   review_count: number;
-  image_url?: string | null;
-  address?: string | null;
+  address: string;
+  latitude: number;
+  longitude: number;
+  opening_hours: Record<string, unknown>;
+  menu: Record<string, unknown>[];
+  signature_dishes: string[];
+  reservation_enabled: boolean;
+  is_featured: boolean;
 }
 
 export interface Experience {
@@ -172,11 +183,15 @@ export interface Room {
   room_type: string;
   description: string;
   capacity: number;
+  beds: string;
+  size_sqm: number;
   total_rooms: number;
   price_per_night: number;
   amenities: string[];
   images: string[];
-  is_active: boolean;
+  breakfast_included: boolean;
+  refundable: boolean;
+  rooms_left?: number | null;
 }
 
 export interface Accommodation extends AccommodationCard {
@@ -190,13 +205,18 @@ export interface Accommodation extends AccommodationCard {
 
 export interface Review {
   id: UUID;
-  user: { id: UUID; full_name: string; avatar_url?: string | null; level?: string };
+  user: { id: UUID; full_name: string; avatar_url?: string | null };
   entity_type: string;
   entity_id: UUID;
   rating: number;
   title?: string | null;
   body: string;
   photos: string[];
+  cleanliness?: number | null;
+  location_score?: number | null;
+  service?: number | null;
+  value?: number | null;
+  experience_score?: number | null;
   is_verified: boolean;
   status: string;
   helpful_count: number;
@@ -220,11 +240,16 @@ export interface User {
   email?: string | null;
   phone?: string | null;
   avatar_url?: string | null;
+  locale: string;
+  currency: string;
   city?: string | null;
   role: string;
   is_active: boolean;
   is_verified: boolean;
+  last_login_at?: string | null;
   created_at: string;
+  privacy_settings: Record<string, unknown>;
+  notification_settings: Record<string, unknown>;
 }
 
 export interface AuthResponse {
@@ -280,6 +305,7 @@ export interface Payment {
   refunded_amount: number;
   paid_at?: string | null;
   created_at: string;
+  gateway_payload?: Record<string, unknown>;
 }
 
 export interface PaymentResult {
@@ -331,8 +357,24 @@ export interface Trip {
   cover_image?: string | null;
   notes?: string | null;
   is_public: boolean;
+  share_slug?: string | null;
   days: TripDay[];
+  bookings?: BookingSummary[];
   created_at?: string;
+}
+
+export interface BookingSummary {
+  id: UUID;
+  code: string;
+  booking_type: string;
+  status: string;
+  title: string;
+  total: number;
+  currency: string;
+  image_url?: string | null;
+  travel_date?: string | null;
+  check_in?: string | null;
+  check_out?: string | null;
 }
 
 export interface WalletTransaction {
@@ -362,9 +404,35 @@ export interface Notification {
   title: string;
   body: string;
   notification_type: string;
+  data: Record<string, unknown>;
   is_read: boolean;
-  action_url?: string | null;
+  read_at?: string | null;
   created_at: string;
+}
+
+export interface Achievement {
+  id: UUID;
+  code: string;
+  title: string;
+  description: string;
+  icon: string;
+  category: string;
+  xp_reward: number;
+  unlocked: boolean;
+  awarded_at?: string | null;
+}
+
+export interface Challenge {
+  id: UUID;
+  code: string;
+  title: string;
+  description: string;
+  icon: string;
+  xp_reward: number;
+  target: number;
+  progress: number;
+  completed: boolean;
+  ends_at?: string | null;
 }
 
 export interface Gamification {
@@ -382,18 +450,20 @@ export interface Gamification {
     image_url?: string | null;
     visited_at: string;
   }[];
-  achievements: { code: string; title: string; description: string; icon: string; awarded_at?: string | null }[];
-  challenges: { code: string; title: string; description: string; target: number; progress: number; xp_reward: number; completed: boolean }[];
+  achievements: Achievement[];
+  challenges: Challenge[];
 }
 
 export interface ItineraryActivity {
+  time: string;
+  end_time?: string | null;
   title: string;
   description?: string;
-  start_time: string;
-  end_time?: string | null;
   location_name?: string | null;
   cost?: number;
   activity_type?: string;
+  entity_type?: string | null;
+  entity_id?: UUID | null;
   latitude?: number | null;
   longitude?: number | null;
 }
@@ -409,14 +479,14 @@ export interface ItineraryDay {
 export interface TripPlan {
   destination: DestinationBrief;
   title: string;
-  summary: string;
   days: ItineraryDay[];
-  estimated_cost: number;
-  budget?: number | null;
-  best_season?: string | null;
+  estimated_total: number;
+  budget: number;
+  budget_remaining: number;
+  budget_breakdown: Record<string, number>;
+  suggested_hotel?: Record<string, unknown> | null;
+  suggested_transport?: Record<string, unknown> | null;
   tips: string[];
-  hotels?: AccommodationCard[];
-  transport?: TransportOffer[];
 }
 
 export interface AssistantResponse {
@@ -425,7 +495,7 @@ export interface AssistantResponse {
   follow_up_questions: string[];
   destination?: DestinationBrief | null;
   plan?: TripPlan | null;
-  recommendations?: { id: UUID; slug: string; name: string; reason: string; image_url?: string | null }[];
+  suggestions: Record<string, unknown>[];
 }
 
 export interface Favorite {
@@ -433,8 +503,12 @@ export interface Favorite {
   entity_type: string;
   entity_id: UUID;
   title: string;
-  subtitle?: string | null;
+  subtitle?: string;
   image_url?: string | null;
+  slug?: string | null;
+  url?: string | null;
+  rating?: number | null;
+  price?: number | null;
   created_at: string;
 }
 
@@ -464,15 +538,18 @@ export interface AdminStats {
   revenue_total: number;
   revenue_30d: number;
   average_booking_value: number;
-  total_trips: number;
+  conversion_rate: number;
+  cancellation_rate: number;
+  total_providers: number;
+  total_destinations: number;
   total_reviews: number;
   pending_reviews: number;
-  total_destinations: number;
-  total_accommodations: number;
-  total_experiences: number;
-  monthly_revenue: { month: string; revenue: number; bookings: number }[];
-  booking_types: { type: string; count: number; revenue: number }[];
-  top_destinations: { name: string; bookings: number; revenue: number }[];
+  revenue_series: { month: string; revenue: number; bookings?: number }[];
+  bookings_by_type: Record<string, number>;
+  popular_destinations: { name: string; bookings: number; revenue?: number }[];
+  popular_transport: { type: string; count: number }[];
+  recent_bookings: Booking[];
+  top_events: { event_type: string; count: number }[];
 }
 
 export interface ProviderDashboard {
@@ -484,11 +561,36 @@ export interface ProviderDashboard {
   confirmed_bookings: number;
   revenue: number;
   commission: number;
-  payout: number;
-  occupancy_rate: number;
-  average_rating: number;
-  recent_bookings: Booking[];
-  services: { id: UUID; name: string; type: string; rating: number; bookings: number; revenue: number }[];
+  net_revenue: number;
+  services_count: number;
+  upcoming_bookings: Booking[];
+  monthly_revenue: { month: string; revenue: number; bookings?: number }[];
+}
+
+export interface AdminUser {
+  id: UUID;
+  email?: string | null;
+  phone?: string | null;
+  full_name: string;
+  role: string;
+  is_active: boolean;
+  is_verified: boolean;
+  city?: string | null;
+  created_at: string;
+  last_login_at?: string | null;
+  bookings_count: number;
+  total_spent: number;
+}
+
+export interface SupportTicket {
+  id: UUID;
+  subject: string;
+  category: string;
+  message: string;
+  status: string;
+  priority: string;
+  response?: string | null;
+  created_at: string;
 }
 
 export interface Option {

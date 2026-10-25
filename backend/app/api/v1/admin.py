@@ -8,16 +8,14 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.api.v1.bookings import BOOKING_LOADS
 from app.core.deps import require_roles
 from app.core.errors import NotFoundError
 from app.core.pagination import Page, PageParams
-from app.api.v1.bookings import BOOKING_LOADS
 from app.db.models import (
-    Accommodation,
     AnalyticsEvent,
     Booking,
     BookingStatus,
-    BookingType,
     Destination,
     Provider,
     Review,

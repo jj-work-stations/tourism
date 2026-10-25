@@ -14,7 +14,8 @@ export const metadata: Metadata = {
   description:
     "سیر، سوپراپ هوشمند سفر: جستجوی بلیت و هتل، رزرو آنلاین، برنامه‌ریزی سفر با هوش مصنوعی، تجربه‌های محلی و پاسپورت سفر.",
   keywords: ["سفر", "رزرو هتل", "بلیت هواپیما", "گردشگری", "ایران", "سیر"],
-  metadataBase: new URL("https://seir.ir"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://seir.ir"),
+  icons: { icon: "/brand-mark.svg", apple: "/brand-mark.svg" },
   openGraph: {
     title: "سیر | سوپراپ سفر ایران",
     description: "همه‌چیز برای یک سفر بی‌دغدغه؛ از جستجو و رزرو تا برنامه‌ریزی هوشمند.",

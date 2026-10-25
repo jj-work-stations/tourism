@@ -7,7 +7,6 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.deps import get_current_user, require_roles
 from app.core.errors import AppError, ForbiddenError, NotFoundError
 from app.db.models import (
@@ -27,7 +26,6 @@ from app.schemas.booking import (
     PaymentOut,
     PaymentResult,
 )
-from app.schemas.common import Message
 from app.services.bookings import pay_booking, validate_coupon
 from app.services.serializers import booking_out, payment_out
 

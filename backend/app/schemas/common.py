@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Generic, TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
-
-T = TypeVar("T")
 
 
 class ORMModel(BaseModel):
@@ -17,7 +14,7 @@ class Message(BaseModel):
     message: str
 
 
-class Paginated(BaseModel, Generic[T]):
+class Paginated[T](BaseModel):
     items: list[T]
     total: int
     page: int

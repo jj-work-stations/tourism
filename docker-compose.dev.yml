@@ -1,0 +1,45 @@
+# Local development override with hot reload and bind mounts.
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+services:
+  backend:
+    build:
+      target: development
+    command:
+      [
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload",
+        "--proxy-headers",
+      ]
+    environment:
+      DEBUG: "true"
+      OTP_DEBUG: "true"
+      AUTO_CREATE_SCHEMA: "false"
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    build:
+      target: development
+      args:
+        NEXT_PUBLIC_API_URL: /api/v1
+        INTERNAL_API_URL: http://backend:8000/api/v1
+    command: ["npm", "run", "dev"]
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: /api/v1
+      INTERNAL_API_URL: http://backend:8000/api/v1
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+
+  # The gateway is unnecessary in development; the Next dev server proxies API
+  # requests itself. Keep it disabled unless you are testing the edge config.
+  gateway:
+    profiles: ["gateway"]

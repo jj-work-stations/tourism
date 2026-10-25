@@ -8,9 +8,6 @@ from sqlalchemy.orm import selectinload
 
 from app.db.models import (
     Accommodation,
-    Attraction,
-    Booking,
-    BookingStatus,
     Destination,
     Experience,
     Favorite,

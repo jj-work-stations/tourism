@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -8,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.deps import get_current_user, get_optional_user, require_roles
+from app.core.deps import get_current_user, get_optional_user
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError
 from app.core.pagination import Page, PageParams
 from app.db.models import (
@@ -16,12 +15,10 @@ from app.db.models import (
     Attraction,
     Booking,
     BookingStatus,
-    Destination,
     Experience,
     Review,
     ReviewStatus,
     Role,
-    TransportOffer,
     User,
 )
 from app.db.session import get_db
