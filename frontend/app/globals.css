@@ -1,4 +1,6 @@
 @import url("https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Unna:wght@400;700&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -6,7 +8,12 @@
 
 :root {
   --brand: #0e7c66;
+  --brand-deep: #07463c;
   --cream: #fbf8f3;
+  --sand: #c9a97e;
+  --terracotta: #b5442c;
+  --gold: #b8860b;
+  --ink: #0b1f1d;
 }
 
 * {
@@ -30,6 +37,44 @@ body {
 ::selection {
   background: #a7f3d8;
   color: #052e2b;
+}
+
+/* ── Persian decorative SVG patterns ─────────────────────────────── */
+.persian-pattern {
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'><g fill='%230e7c66' fill-opacity='0.04'><path d='M40 8 C56 8 68 20 68 36 C68 52 52 64 40 72 C28 64 12 52 12 36 C12 20 24 8 40 8 Z'/><path d='M40 20 C50 20 56 28 56 36 C56 46 44 54 40 60'/><circle cx='40' cy='34' r='2.5' fill='%230e7c66' fill-opacity='0.08'/></g></svg>");
+}
+
+.persian-arch-bg {
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'><g fill='%23b5442c' fill-opacity='0.05'><path d='M80 8 C110 8 136 24 136 48 C136 76 104 96 80 112 C56 96 24 76 24 48 C24 24 50 8 80 8 Z'/><path d='M80 28 C100 28 112 40 112 52 C112 66 92 78 80 88'/></g></svg>");
+}
+
+/* ── Ornamental text (calligraphic accent) ───────────────────────── */
+.ornamental-title {
+  font-family: "Amiri", "Vazirmatn", serif;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.ornamental-accent {
+  font-family: "Amiri", "Vazirmatn", serif;
+  font-style: italic;
+}
+
+/* ── Persian arch panel background ───────────────────────────────── */
+.arch-panel {
+  position: relative;
+  overflow: hidden;
+}
+.arch-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'><g fill='%230e7c66' fill-opacity='0.03'><path d='M100 10 C130 10 156 26 156 50 C156 80 124 100 100 116 C76 100 44 80 44 50 C44 26 70 10 100 10 Z'/></g></svg>");
+  background-repeat: repeat;
+  pointer-events: none;
 }
 
 @layer components {
@@ -79,6 +124,40 @@ body {
 
   .section-title {
     @apply text-2xl font-extrabold tracking-tight text-ink sm:text-3xl;
+  }
+
+  /* Persian ornamental card: corner motifs + subtle arch background */
+  .card-ornamental {
+    @apply relative overflow-hidden rounded-3xl border border-black/5 bg-white shadow-card;
+  }
+  .card-ornamental::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'><g fill='%230e7c66' fill-opacity='0.03'><path d='M60 6 C78 6 92 18 92 34 C92 52 72 66 60 76 C48 66 28 52 28 34 C28 18 42 6 60 6 Z'/></g></svg>");
+    background-repeat: repeat;
+    background-position: 0 0, 60px 60px;
+    pointer-events: none;
+  }
+
+  /* Gold accent panel (earnings / premium) */
+  .panel-gold {
+    @apply relative overflow-hidden rounded-3xl border border-sand-300/60 bg-gradient-to-br from-sand-50 via-white to-sand-100;
+  }
+  .panel-gold::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><g fill='%23b8860b' fill-opacity='0.05'><path d='M50 8 C68 8 82 20 82 36 C82 54 62 68 50 78 C38 68 18 54 18 36 C18 20 32 8 50 8 Z'/></g></svg>");
+    background-repeat: repeat;
+    pointer-events: none;
+  }
+
+  /* Terracotta accent panel */
+  .panel-terracotta {
+    @apply relative overflow-hidden rounded-3xl border border-terracotta/15 bg-gradient-to-br from-terracotta/5 via-white to-white;
   }
 }
 

@@ -86,3 +86,37 @@ class AuditLogOut(ORMModel):
     user_id: UUID | None = None
     data: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
+
+
+class AuditLogCreate(ORMModel):
+    action: str
+    entity_type: str
+    entity_id: UUID | None = None
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+class SystemSettings(ORMModel):
+    site_name: str = "سیر"
+    site_tagline: str = "سوپراپ سفر ایران"
+    support_phone: str = "۰۲۱-۱۲۳۴۵۶۷۸"
+    support_email: str = "support@seir.ir"
+    default_currency: str = "IRT"
+    default_locale: str = "fa"
+    booking_hold_minutes: int = 15
+    cancellation_window_hours: int = 48
+    commission_rate: float = 0.15
+    maintenance_mode: bool = False
+    registration_open: bool = True
+
+
+class ContentItem(ORMModel):
+    id: UUID
+    entity_type: str
+    entity_id: UUID
+    title: str
+    subtitle: str = ""
+    image_url: str = ""
+    is_active: bool = True
+    is_featured: bool = False
+    sort_order: int = 0
+    created_at: datetime

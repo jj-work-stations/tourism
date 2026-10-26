@@ -13,19 +13,38 @@ from app.core.deps import require_roles
 from app.core.errors import NotFoundError
 from app.core.pagination import Page, PageParams
 from app.db.models import (
+    Accommodation,
+    AccommodationType,
     AnalyticsEvent,
+    Attraction,
+    AttractionCategory,
+    AuditLog,
     Booking,
     BookingStatus,
+    Campaign,
+    Coupon,
+    CouponType,
     Destination,
+    Experience,
+    ExperienceCategory,
     Provider,
+    ProviderType,
+    Restaurant,
     Review,
     ReviewStatus,
     Role,
     TransportOffer,
+    TransportType,
     User,
 )
 from app.db.session import get_db
-from app.schemas.admin import AdminStats, AdminUserOut, AdminUserUpdate
+from app.schemas.admin import (
+    AdminStats,
+    AdminUserOut,
+    AdminUserUpdate,
+    AuditLogOut,
+    SystemSettings,
+)
 from app.schemas.booking import BookingOut
 from app.schemas.common import Message
 from app.schemas.engagement import ReviewOut
@@ -367,3 +386,429 @@ async def delete_review(
     await db.delete(review)
     await db.commit()
     return Message(message="نظر حذف شد.")
+
+
+# ───────────────────────────── Content Management ─────────────────────────────
+
+
+@router.get("/campaigns", summary="لیست کمپین‌ها")
+async def list_campaigns(
+    is_active: bool | None = Query(default=None),
+    placement: str | None = Query(default=None),
+    _: User = Depends(require_roles(Role.ADMIN, Role.MARKETING_MANAGER)),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    filters = []
+    if is_active is not None:
+        filters.append(Campaign.is_active.is_(is_active))
+    if placement:
+        filters.append(Campaign.placement == placement)
+    rows = (
+        await db.execute(
+            select(Campaign).where(*filters).order_by(Campaign.sort_order, Campaign.created_at.desc())
+        )
+    ).scalars().all()
+    return [
+        {
+            "id": c.id,
+            "title": c.title,
+            "subtitle": c.subtitle,
+            "image_url": c.image_url,
+            "cta_label": c.cta_label,
+            "cta_url": c.cta_url,
+            "badge": c.badge,
+            "placement": c.placement,
+            "is_active": c.is_active,
+            "sort_order": c.sort_order,
+            "starts_at": c.starts_at,
+            "ends_at": c.ends_at,
+            "created_at": c.created_at,
+        }
+        for c in rows
+    ]
+
+
+@router.post("/campaigns", summary="ایجاد/به‌روزرسانی کمپین")
+async def upsert_campaign(
+    payload: dict,
+    _: User = Depends(require_roles(Role.ADMIN, Role.MARKETING_MANAGER)),
+    db: AsyncSession = Depends(get_db),
+) -> Message:
+    campaign_id = payload.get("id")
+    if campaign_id:
+        campaign = await db.get(Campaign, campaign_id)
+        if campaign is None:
+            raise NotFoundError("کمپین یافت نشد.")
+    else:
+        campaign = Campaign()
+        db.add(campaign)
+    for field in ("title", "subtitle", "image_url", "cta_label", "cta_url", "badge", "placement", "is_active", "sort_order"):
+        if field in payload:
+            setattr(campaign, field, payload[field])
+    if payload.get("starts_at"):
+        campaign.starts_at = datetime.fromisoformat(payload["starts_at"])
+    if payload.get("ends_at"):
+        campaign.ends_at = datetime.fromisoformat(payload["ends_at"])
+    await db.commit()
+    return Message(message="کمپین ذخیره شد.")
+
+
+@router.get("/destinations", summary="لیست مقصدها")
+async def list_destinations(
+    q: str | None = Query(default=None, max_length=100),
+    is_featured: bool | None = Query(default=None),
+    params: PageParams = Depends(),
+    _: User = Depends(require_roles(Role.ADMIN, Role.CONTENT_MANAGER)),
+    db: AsyncSession = Depends(get_db),
+) -> Page[dict]:
+    filters = []
+    if q:
+        filters.append(or_(Destination.name.ilike(f"%{q}%"), Destination.name_local.ilike(f"%{q}%")))
+    if is_featured is not None:
+        filters.append(Destination.is_featured.is_(is_featured))
+    total = (await db.execute(select(func.count(Destination.id)).where(*filters))).scalar_one()
+    rows = (
+        await db.execute(
+            select(Destination).where(*filters).order_by(Destination.popularity.desc()).offset(params.offset).limit(params.limit)
+        )
+    ).scalars().all()
+    items = [
+        {
+            "id": d.id, "slug": d.slug, "name": d.name, "name_local": d.name_local,
+            "country": d.country, "image_url": d.image_url, "is_featured": d.is_featured,
+            "popularity": d.popularity, "avg_daily_budget": d.avg_daily_budget,
+            "best_season": d.best_season, "tags": d.tags, "description": d.description,
+        }
+        for d in rows
+    ]
+    return Page.create(items, total, params)
+
+
+@router.post("/destinations", summary="ایجاد/به‌روزرسانی مقصد")
+async def upsert_destination(
+    payload: dict,
+    _: User = Depends(require_roles(Role.ADMIN, Role.CONTENT_MANAGER)),
+    db: AsyncSession = Depends(get_db),
+) -> Message:
+    dest_id = payload.get("id")
+    if dest_id:
+        dest = await db.get(Destination, dest_id)
+        if dest is None:
+            raise NotFoundError("مقصد یافت نشد.")
+    else:
+        dest = Destination()
+        db.add(dest)
+        dest.slug = sluggify(payload.get("name", ""))
+    for field in ("name", "name_local", "country", "region", "description", "short_description",
+                  "image_url", "gallery", "latitude", "longitude", "best_season", "avg_daily_budget",
+                  "tags", "is_featured", "popularity"):
+        if field in payload:
+            setattr(dest, field, payload[field])
+    await db.commit()
+    return Message(message="مقصد ذخیره شد.")
+
+
+@router.get("/accommodations", summary="لیست اقامتگاه‌ها")
+async def list_accommodations(
+    q: str | None = Query(default=None, max_length=100),
+    destination_id: UUID | None = Query(default=None),
+    is_active: bool | None = Query(default=None),
+    is_featured: bool | None = None,
+    params: PageParams = Depends(),
+    _: User = Depends(require_roles(Role.ADMIN, Role.CONTENT_MANAGER)),
+    db: AsyncSession = Depends(get_db),
+) -> Page[dict]:
+    filters = []
+    if q:
+        filters.append(Accommodation.name.ilike(f"%{q}%"))
+    if destination_id:
+        filters.append(Accommodation.destination_id == destination_id)
+    if is_active is not None:
+        filters.append(Accommodation.is_active.is_(is_active))
+    if is_featured is not None:
+        filters.append(Accommodation.is_featured.is_(is_featured))
+    total = (await db.execute(select(func.count(Accommodation.id)).where(*filters))).scalar_one()
+    rows = (
+        await db.execute(
+            select(Accommodation).options(selectinload(Accommodation.destination)).where(*filters)
+            .order_by(Accommodation.star_rating.desc()).offset(params.offset).limit(params.limit)
+        )
+    ).scalars().all()
+    items = [
+        {
+            "id": a.id, "slug": a.slug, "name": a.name, "type": a.type.value,
+            "destination_id": a.destination_id, "destination_name": a.destination.name if a.destination else None,
+            "star_rating": a.star_rating, "guest_rating": a.guest_rating, "base_price": a.base_price,
+            "is_active": a.is_active, "is_featured": a.is_featured, "review_count": a.review_count,
+            "images": a.images, "is_verified": a.provider_id is not None,
+        }
+        for a in rows
+    ]
+    return Page.create(items, total, params)
+
+
+@router.post("/accommodations", summary="ایجاد/به‌روزرسانی اقامتگاه")
+async def upsert_accommodation(
+    payload: dict,
+    _: User = Depends(require_roles(Role.ADMIN, Role.CONTENT_MANAGER)),
+    db: AsyncSession = Depends(get_db),
+) -> Message:
+    acc_id = payload.get("id")
+    if acc_id:
+        acc = await db.get(Accommodation, acc_id)
+        if acc is None:
+            raise NotFoundError("اقامتگاه یافت نشد.")
+    else:
+        acc = Accommodation()
+        db.add(acc)
+        if payload.get("name"):
+            acc.slug = sluggify(payload["name"])
+    for field in ("name", "destination_id", "provider_id", "type", "description", "short_description",
+                  "address", "latitude", "longitude", "star_rating", "gallery", "video_url",
+                  "amenities", "rules", "policies", "cancellation_policy", "breakfast_included",
+                  "free_cancellation", "base_price", "distance_to_center_km", "is_featured", "is_active"):
+        if field in payload:
+            setattr(acc, field, payload[field])
+    await db.commit()
+    return Message(message="اقامتگاه ذخیره شد.")
+
+
+@router.get("/attractions", summary="لیست جاذبه‌ها")
+async def list_attractions(
+    q: str | None = Query(default=None, max_length=100),
+    category: str | None = None,
+    destination_id: UUID | None = None,
+    is_featured: bool | None = None,
+    params: PageParams = Depends(),
+    _: User = Depends(require_roles(Role.ADMIN, Role.CONTENT_MANAGER)),
+    db: AsyncSession = Depends(get_db),
+) -> Page[dict]:
+    filters = []
+    if q:
+        filters.append(Attraction.name.ilike(f"%{q}%"))
+    if category:
+        filters.append(Attraction.category == category)
+    if destination_id:
+        filters.append(Attraction.destination_id == destination_id)
+    if is_featured is not None:
+        filters.append(Attraction.is_featured.is_(is_featured))
+    total = (await db.execute(select(func.count(Attraction.id)).where(*filters))).scalar_one()
+    rows = (
+        await db.execute(
+            select(Attraction).options(selectinload(Attraction.destination)).where(*filters)
+            .order_by(Attraction.rating.desc()).offset(params.offset).limit(params.limit)
+        )
+    ).scalars().all()
+    items = [
+        {
+            "id": a.id, "slug": a.slug, "name": a.name, "destination_id": a.destination_id,
+            "destination_name": a.destination.name if a.destination else None,
+            "category": a.category.value, "image_url": a.image_url, "rating": a.rating,
+            "review_count": a.review_count, "ticket_price": a.ticket_price,
+            "is_featured": a.is_featured, "is_active": a.is_active, "description": a.description,
+        }
+        for a in rows
+    ]
+    return Page.create(items, total, params)
+
+
+@router.post("/attractions", summary="ایجاد/به‌روزرسانی جاذبه")
+async def upsert_attraction(
+    payload: dict,
+    _: User = Depends(require_roles(Role.ADMIN, Role.CONTENT_MANAGER)),
+    db: AsyncSession = Depends(get_db),
+) -> Message:
+    attr_id = payload.get("id")
+    if attr_id:
+        attr = await db.get(Attraction, attr_id)
+        if attr is None:
+            raise NotFoundError("جاذبه یافت نشد.")
+    else:
+        attr = Attraction()
+        db.add(attr)
+        if payload.get("name"):
+            attr.slug = sluggify(payload["name"])
+    for field in ("name", "destination_id", "category", "description", "image_url", "gallery",
+                  "latitude", "longitude", "address", "opening_hours", "ticket_price",
+                  "suggested_visit_minutes", "is_featured", "is_active"):
+        if field in payload:
+            setattr(attr, field, payload[field])
+    await db.commit()
+    return Message(message="جاذبه ذخیره شد.")
+
+
+@router.get("/experiences", summary="لیست تجربه‌ها")
+async def list_experiences(
+    q: str | None = Query(default=None, max_length=100),
+    category: str | None = None,
+    destination_id: UUID | None = None,
+    is_featured: bool | None = None,
+    params: PageParams = Depends(),
+    _: User = Depends(require_roles(Role.ADMIN, Role.CONTENT_MANAGER)),
+    db: AsyncSession = Depends(get_db),
+) -> Page[dict]:
+    filters = []
+    if q:
+        filters.append(Experience.name.ilike(f"%{q}%"))
+    if category:
+        filters.append(Experience.category == category)
+    if destination_id:
+        filters.append(Experience.destination_id == destination_id)
+    if is_featured is not None:
+        filters.append(Experience.is_featured.is_(is_featured))
+    total = (await db.execute(select(func.count(Experience.id)).where(*filters))).scalar_one()
+    rows = (
+        await db.execute(
+            select(Experience).options(selectinload(Experience.destination)).where(*filters)
+            .order_by(Experience.rating.desc()).offset(params.offset).limit(params.limit)
+        )
+    ).scalars().all()
+    items = [
+        {
+            "id": e.id, "slug": e.slug, "name": e.name, "destination_id": e.destination_id,
+            "destination_name": e.destination.name if e.destination else None,
+            "category": e.category.value, "image_url": e.image_url, "rating": e.rating,
+            "review_count": e.review_count, "price": e.price, "duration_minutes": e.duration_minutes,
+            "is_featured": e.is_featured, "is_active": e.is_active, "description": e.description,
+        }
+        for e in rows
+    ]
+    return Page.create(items, total, params)
+
+
+@router.post("/experiences", summary="ایجاد/به‌روزرسانی تجربه")
+async def upsert_experience(
+    payload: dict,
+    _: User = Depends(require_roles(Role.ADMIN, Role.CONTENT_MANAGER)),
+    db: AsyncSession = Depends(get_db),
+) -> Message:
+    exp_id = payload.get("id")
+    if exp_id:
+        exp = await db.get(Experience, exp_id)
+        if exp is None:
+            raise NotFoundError("تجربه یافت نشد.")
+    else:
+        exp = Experience()
+        db.add(exp)
+        if payload.get("name"):
+            exp.slug = sluggify(payload["name"])
+    for field in ("name", "destination_id", "category", "description", "image_url", "gallery",
+                  "duration_minutes", "price", "max_participants", "meeting_point",
+                  "latitude", "longitude", "includes", "languages", "guide_name",
+                  "is_featured", "is_active"):
+        if field in payload:
+            setattr(exp, field, payload[field])
+    await db.commit()
+    return Message(message="تجربه ذخیره شد.")
+
+
+@router.get("/restaurants", summary="لیست رستوران‌ها")
+async def list_restaurants(
+    q: str | None = Query(default=None, max_length=100),
+    destination_id: UUID | None = None,
+    is_featured: bool | None = None,
+    params: PageParams = Depends(),
+    _: User = Depends(require_roles(Role.ADMIN, Role.CONTENT_MANAGER)),
+    db: AsyncSession = Depends(get_db),
+) -> Page[dict]:
+    filters = []
+    if q:
+        filters.append(Restaurant.name.ilike(f"%{q}%"))
+    if destination_id:
+        filters.append(Restaurant.destination_id == destination_id)
+    if is_featured is not None:
+        filters.append(Restaurant.is_featured.is_(is_featured))
+    total = (await db.execute(select(func.count(Restaurant.id)).where(*filters))).scalar_one()
+    rows = (
+        await db.execute(
+            select(Restaurant).options(selectinload(Restaurant.destination)).where(*filters)
+            .order_by(Restaurant.rating.desc()).offset(params.offset).limit(params.limit)
+        )
+    ).scalars().all()
+    items = [
+        {
+            "id": r.id, "slug": r.slug, "name": r.name, "destination_id": r.destination_id,
+            "destination_name": r.destination.name if r.destination else None,
+            "cuisine": r.cuisine, "average_price": r.average_price, "rating": r.rating,
+            "review_count": r.review_count, "image_url": r.image_url, "is_featured": r.is_featured,
+            "is_active": r.is_active, "description": r.description,
+        }
+        for r in rows
+    ]
+    return Page.create(items, total, params)
+
+
+@router.post("/restaurants", summary="ایجاد/به‌روزرسانی رستوران")
+async def upsert_restaurant(
+    payload: dict,
+    _: User = Depends(require_roles(Role.ADMIN, Role.CONTENT_MANAGER)),
+    db: AsyncSession = Depends(get_db),
+) -> Message:
+    rest_id = payload.get("id")
+    if rest_id:
+        rest = await db.get(Restaurant, rest_id)
+        if rest is None:
+            raise NotFoundError("رستوران یافت نشد.")
+    else:
+        rest = Restaurant()
+        db.add(rest)
+        if payload.get("name"):
+            rest.slug = sluggify(payload["name"])
+    for field in ("name", "destination_id", "description", "image_url", "gallery", "cuisine",
+                  "price_range", "average_price", "address", "latitude", "longitude",
+                  "opening_hours", "menu", "signature_dishes", "reservation_enabled",
+                  "is_featured", "is_active"):
+        if field in payload:
+            setattr(rest, field, payload[field])
+    await db.commit()
+    return Message(message="رستوران ذخیره شد.")
+
+
+@router.get("/settings", response_model=SystemSettings, summary="تنظیمات سیستم")
+async def get_settings(_: User = Depends(require_roles(Role.ADMIN))) -> SystemSettings:
+    return SystemSettings()
+
+
+@router.put("/settings", response_model=Message, summary="به‌روزرسانی تنظیمات")
+async def put_settings(
+    payload: SystemSettings,
+    _: User = Depends(require_roles(Role.ADMIN)),
+) -> Message:
+    settings = get_app_settings()
+    settings.update(payload.model_dump(exclude_unset=True))
+    save_app_settings(settings)
+    return Message(message="تنظیمات ذخیره شد.")
+
+
+@router.get("/audit", response_model=Page[AuditLogOut], summary="لاگ‌های فعالیت")
+async def audit(
+    action: str | None = Query(default=None),
+    entity_type: str | None = None,
+    user_id: UUID | None = None,
+    params: PageParams = Depends(),
+    _: User = Depends(require_roles(Role.ADMIN, Role.CONTENT_MANAGER)),
+    db: AsyncSession = Depends(get_db),
+) -> Page[AuditLogOut]:
+    filters = []
+    if action:
+        filters.append(AuditLog.action == action)
+    if entity_type:
+        filters.append(AuditLog.entity_type == entity_type)
+    if user_id:
+        filters.append(AuditLog.user_id == user_id)
+    total = (await db.execute(select(func.count(AuditLog.id)).where(*filters))).scalar_one()
+    rows = (
+        await db.execute(select(AuditLog).where(*filters).order_by(AuditLog.created_at.desc()).offset(params.offset).limit(params.limit))
+    ).scalars().all()
+    return Page.create([AuditLogOut.model_validate(r) for r in rows], total, params)
+
+
+def sluggify(text: str) -> str:
+    import re
+    text = text.strip().lower()
+    text = re.sub(r"[^\w\s-]", "", text)
+    text = re.sub(r"[\s_-]+", "-", text)
+    return text or "item"
+
+
+from app.core.settings_store import get_app_settings, save_app_settings  # noqa: E402

@@ -1,5 +1,6 @@
 from app.db.base import Base
 from app.db.models.booking import (
+    AuditLog,
     Booking,
     Campaign,
     Coupon,
@@ -63,6 +64,7 @@ __all__ = [
     "AnalyticsEventName",
     "Attraction",
     "AttractionCategory",
+    "AuditLog",
     "Base",
     "Booking",
     "BookingStatus",

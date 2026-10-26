@@ -217,3 +217,17 @@ class EmergencyContact(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     address: Mapped[str] = mapped_column(String(400), default="")
     latitude: Mapped[float | None]
     longitude: Mapped[float | None]
+
+
+class AuditLog(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "audit_logs"
+    __table_args__ = (Index("ix_audit_log_user_created", "user_id", "created_at"),)
+
+    user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    action: Mapped[str] = mapped_column(String(80), index=True)
+    entity_type: Mapped[str] = mapped_column(String(60), index=True)
+    entity_id: Mapped[UUID | None] = mapped_column(index=True)
+    ip_address: Mapped[str | None] = mapped_column(String(64))
+    data: Mapped[dict[str, Any]] = mapped_column(default=dict)
