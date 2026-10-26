@@ -2,7 +2,7 @@ import Link from "next/link";
 import {
   ArrowLeft,
   BadgeCheck,
-  BellRing,
+  BedDouble,
   Bot,
   Compass,
   CreditCard,
@@ -11,12 +11,14 @@ import {
   Globe2,
   Headphones,
   HeartHandshake,
+  Landmark,
   MapPinned,
   Plane,
   ShieldCheck,
   Sparkles,
   Star,
   Ticket,
+  UtensilsCrossed,
   Wallet,
 } from "lucide-react";
 
@@ -164,6 +166,32 @@ export default async function HomePage() {
                 <div className="mt-1 text-[11px] text-ink/45">{item.label}</div>
               </div>
             </div>
+          ))}
+        </div>
+
+        {/* Discovery categories — arch-shaped tiles */}
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {[
+            { href: "/stays", label: "اقامتگاه‌ها", sub: "هتل، بوم‌گردی، ویلا", icon: BedDouble },
+            { href: "/attractions", label: "جاذبه‌ها", sub: "تاریخی، طبیعی، مذهبی", icon: Landmark },
+            { href: "/restaurants", label: "رستوران‌ها", sub: "غذاهای محلی و منو", icon: UtensilsCrossed },
+            { href: "/experiences", label: "تجربه‌ها", sub: "تور، آشپزی، عکاسی", icon: Sparkles },
+            { href: "/map", label: "نقشه هوشمند", sub: "همه‌چیز روی یک نقشه", icon: MapPinned },
+          ].map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="card card-hover group flex items-center gap-3 p-4"
+            >
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-brand-700 to-brand-500 text-white shadow-soft transition group-hover:rotate-6">
+                <item.icon className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-extrabold text-ink">{item.label}</div>
+                <div className="truncate text-[10px] text-ink/45">{item.sub}</div>
+              </div>
+              <ArrowLeft className="mr-auto h-4 w-4 shrink-0 text-ink/20 transition group-hover:-translate-x-0.5 group-hover:text-brand-700" />
+            </Link>
           ))}
         </div>
       </section>

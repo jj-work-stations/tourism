@@ -103,4 +103,4 @@ export function PersianArch({
       <path d="M32 60 V30" />
       <path d="M24 50 H40" />
     </svg>
-  );
+  );}

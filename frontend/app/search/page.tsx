@@ -26,7 +26,7 @@ import {
 import { AccommodationResultCard, ExperienceCard } from "@/components/cards";
 import { Badge, EmptyState, LoadingCards, PageHero, Rating, Spinner } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
-import { dateInput, duration, time, toman } from "@/lib/format";
+import { date, dateInput, duration, time, toman } from "@/lib/format";
 import type {
   AccommodationCard,
   Destination,
@@ -37,6 +37,19 @@ import type {
 import { cn, destinationName } from "@/lib/utils";
 
 type Tab = "transport" | "stay" | "experience";
+
+interface RecentSearchEntry {
+  tab?: string;
+  origin?: string;
+  destination?: string;
+  date?: string;
+  check_in?: string;
+  check_out?: string;
+  passengers?: number;
+  guests?: number;
+  total?: number;
+  created_at?: string;
+}
 
 const TABS: { id: Tab; label: string; icon: typeof Bus }[] = [
   { id: "transport", label: "بلیت سفر", icon: Bus },
@@ -85,6 +98,42 @@ function SearchContent() {
     () => destinationsQuery.data?.items ?? [],
     [destinationsQuery.data],
   );
+
+  const recentQuery = useQuery({
+    queryKey: ["search", "recent"],
+    queryFn: () => api.get<RecentSearchEntry[]>("/search/recent", { limit: 5 }),
+    retry: false,
+  });
+  const recentSearches = useMemo(() => recentQuery.data ?? [], [recentQuery.data]);
+
+  function destinationLabel(id: string | undefined): string {
+    const found = destinations.find((d) => d.id === id);
+    return found ? destinationName(found) : "";
+  }
+
+  function applyRecent(entry: RecentSearchEntry) {
+    const tab = normalizeTab(entry.tab ?? null);
+    setTab(tab);
+    if (entry.origin) setOriginId(entry.origin);
+    if (entry.destination) setDestinationId(entry.destination);
+    if (tab === "stay") {
+      if (entry.check_in) setTravelDate(entry.check_in);
+      if (entry.check_out) setCheckOut(entry.check_out);
+      if (entry.date) setTravelDate(entry.date);
+    } else if (entry.date) {
+      setTravelDate(entry.date);
+    }
+    if (entry.guests ?? entry.passengers) setGuests(Number(entry.guests ?? entry.passengers));
+    setSubmitted((current) => ({
+      ...current,
+      tab,
+      originId: entry.origin || current.originId,
+      destinationId: entry.destination || current.destinationId,
+      travelDate: (tab === "stay" ? entry.check_in || entry.date : entry.date) || current.travelDate,
+      checkOut: entry.check_out || current.checkOut,
+      guests: Number(entry.guests ?? entry.passengers ?? current.guests),
+    }));
+  }
 
   const origin = submitted.originId || destinations.find((d) => d.slug === "tehran")?.id || "";
   const destination =
@@ -287,6 +336,35 @@ function SearchContent() {
       </PageHero>
 
       <section className="container-app py-8">
+        {recentSearches.length > 0 && (
+          <div className="mb-5 flex flex-wrap items-center gap-1.5">
+            <span className="flex items-center gap-1 text-[11px] font-bold text-ink/45">
+              <Clock3 className="h-3.5 w-3.5 text-brand-600" /> آخرین جستجوهای شما:
+            </span>
+            {recentSearches.map((entry, index) => {
+              const labelParts = [
+                entry.origin ? destinationLabel(entry.origin) : "",
+                entry.destination ? destinationLabel(entry.destination) : "",
+              ].filter(Boolean);
+              const when = entry.date || entry.check_in;
+              const label = [
+                labelParts.join(" → ") || "جستجوی اقامتگاه",
+                when ? date(when) : "",
+              ].filter(Boolean).join(" · ");
+              return (
+                <button
+                  key={entry.created_at || index}
+                  type="button"
+                  onClick={() => applyRecent(entry)}
+                  className="filter-pill !py-1.5"
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm font-bold text-ink">
             <Filter className="h-4 w-4 text-brand-700" /> نتایج جستجو

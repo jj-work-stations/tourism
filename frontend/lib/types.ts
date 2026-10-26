@@ -604,6 +604,7 @@ export interface MetaOptions {
   accommodation_types: Option[];
   attraction_categories: Option[];
   experience_categories: Option[];
+  amenities: Option[];
   interests: Option[];
   cities: { id: UUID; name: string; name_local?: string }[];
   budget_ranges: { value: string; label: string }[];

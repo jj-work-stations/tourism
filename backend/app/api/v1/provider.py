@@ -1,26 +1,38 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from uuid import UUID
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.deps import require_roles
-from app.core.errors import NotFoundError
+from app.core.errors import BadRequestError, NotFoundError
+from app.core.pagination import Page, PageParams
 from app.db.models import (
     Accommodation,
+    AccommodationType,
     Booking,
     BookingStatus,
+    Experience,
+    NotificationType,
     Provider,
+    Review,
+    ReviewStatus,
     Role,
     TransportOffer,
+    TransportType,
     User,
 )
 from app.db.session import get_db
 from app.schemas.admin import ProviderDashboard
-from app.services.serializers import booking_out
+from app.schemas.booking import BookingOut
+from app.schemas.common import Message
+from app.schemas.engagement import ReviewOut
+from app.services.notifications import notify
+from app.services.serializers import booking_out, review_out
 
 router = APIRouter(prefix="/provider", tags=["Provider Portal"])
 
@@ -36,6 +48,214 @@ async def _provider_for(db: AsyncSession, user: User) -> Provider:
     if provider is None:
         raise NotFoundError("پروفایل ارائه‌دهنده یافت نشد.")
     return provider
+
+
+async def _provider_booking_filters(db: AsyncSession, user: User) -> list:
+    provider = await _provider_for(db, user)
+    hotel_ids = list(
+        (await db.execute(select(Accommodation.id).where(Accommodation.provider_id == provider.id))).scalars().all()
+    )
+    offer_ids = list(
+        (await db.execute(select(TransportOffer.id).where(TransportOffer.provider_id == provider.id))).scalars().all()
+    )
+    filters = []
+    if hotel_ids:
+        filters.append(Booking.accommodation_id.in_(hotel_ids))
+    if offer_ids:
+        filters.append(Booking.transport_offer_id.in_(offer_ids))
+    return provider, filters
+
+
+@router.get("/bookings", response_model=Page[BookingOut], summary="رزروهای ارائه‌دهنده")
+async def provider_bookings(
+    status_filter: str | None = Query(default=None, alias="status"),
+    q: str | None = Query(default=None, max_length=100),
+    params: PageParams = Depends(),
+    user: User = Depends(require_roles(Role.PROVIDER, Role.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+) -> Page[BookingOut]:
+    _, filters = await _provider_booking_filters(db, user)
+    if status_filter:
+        filters.append(Booking.status == status_filter)
+    if q:
+        filters.append(Booking.title.ilike(f"%{q}%"))
+    total = (await db.execute(select(func.count(Booking.id)).where(*filters))).scalar_one() if filters else 0
+    rows = (
+        list(
+            (
+                await db.execute(
+                    select(Booking)
+                    .options(
+                        selectinload(Booking.passengers),
+                        selectinload(Booking.payments),
+                        selectinload(Booking.destination),
+                        selectinload(Booking.accommodation),
+                        selectinload(Booking.experience),
+                        selectinload(Booking.transport_offer),
+                    )
+                    .where(*filters)
+                    .order_by(Booking.created_at.desc())
+                    .offset(params.offset)
+                    .limit(params.limit)
+                )
+            ).scalars().all()
+        )
+        if filters
+        else []
+    )
+    return Page.create([booking_out(b) for b in rows], total, params)
+
+
+ALLOWED_TRANSITIONS: dict[BookingStatus, set[BookingStatus]] = {
+    BookingStatus.PENDING: {BookingStatus.CONFIRMED, BookingStatus.CANCELLED},
+    BookingStatus.CONFIRMED: {BookingStatus.COMPLETED, BookingStatus.CANCELLED},
+}
+
+
+@router.patch("/bookings/{booking_id}", response_model=BookingOut, summary="تغییر وضعیت رزرو")
+async def update_booking_status(
+    booking_id: UUID,
+    payload: dict,
+    user: User = Depends(require_roles(Role.PROVIDER, Role.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+) -> BookingOut:
+    booking = (
+        await db.execute(
+            select(Booking)
+            .options(*(
+                selectinload(Booking.passengers),
+                selectinload(Booking.payments),
+                selectinload(Booking.destination),
+                selectinload(Booking.accommodation),
+                selectinload(Booking.experience),
+                selectinload(Booking.transport_offer),
+            ))
+            .where(Booking.id == booking_id)
+        )
+    ).scalar_one_or_none()
+    if booking is None:
+        raise NotFoundError("رزرو یافت نشد.")
+    provider = await _provider_for(db, user)
+    owned_hotel = booking.accommodation_id and (
+        await db.execute(
+            select(Accommodation.id).where(
+                Accommodation.id == booking.accommodation_id,
+                Accommodation.provider_id == provider.id,
+            )
+        )
+    ).scalar_one_or_none()
+    owned_offer = booking.transport_offer_id and (
+        await db.execute(
+            select(TransportOffer.id).where(
+                TransportOffer.id == booking.transport_offer_id,
+                TransportOffer.provider_id == provider.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not owned_hotel and not owned_offer:
+        raise NotFoundError("رزرو یافت نشد.")
+
+    new_status = BookingStatus(str(payload.get("status", "")))
+    if new_status not in ALLOWED_TRANSITIONS.get(booking.status, set()):
+        raise BadRequestError("این تغییر وضعیت برای رزرو مجاز نیست.")
+    booking.status = new_status
+    if new_status == BookingStatus.CONFIRMED:
+        booking.confirmed_at = datetime.now(UTC)
+    if new_status == BookingStatus.CANCELLED:
+        booking.cancelled_at = datetime.now(UTC)
+    await db.commit()
+    await db.refresh(booking)
+    await notify(
+        db,
+        booking.user_id,
+        "به‌روزرسانی رزرو",
+        f"وضعیت رزرو «{booking.title}» به «{new_status.value}» تغییر کرد.",
+        notification_type=NotificationType.BOOKING,
+        data={"booking_id": str(booking.id), "status": new_status.value},
+    )
+    await db.commit()
+    return booking_out(booking)
+
+
+@router.get("/reviews", response_model=Page[ReviewOut], summary="نظرات خدمات ارائه‌دهنده")
+async def provider_reviews(
+    params: PageParams = Depends(),
+    user: User = Depends(require_roles(Role.PROVIDER, Role.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+) -> Page[ReviewOut]:
+    provider = await _provider_for(db, user)
+    hotel_ids = list(
+        (await db.execute(select(Accommodation.id).where(Accommodation.provider_id == provider.id))).scalars().all()
+    )
+    offer_ids = list(
+        (await db.execute(select(TransportOffer.id).where(TransportOffer.provider_id == provider.id))).scalars().all()
+    )
+    experience_ids = list(
+        (await db.execute(select(Experience.id).where(Experience.provider_id == provider.id))).scalars().all()
+    )
+    entity_ids = hotel_ids + offer_ids + experience_ids
+    total = 0
+    rows: list[Review] = []
+    if entity_ids:
+        total = (
+            await db.execute(
+                select(func.count(Review.id)).where(
+                    Review.entity_id.in_(entity_ids),
+                    Review.status == ReviewStatus.PUBLISHED,
+                )
+            )
+        ).scalar_one()
+        rows = list(
+            (
+                await db.execute(
+                    select(Review)
+                    .options(selectinload(Review.user))
+                    .where(Review.entity_id.in_(entity_ids), Review.status == ReviewStatus.PUBLISHED)
+                    .order_by(Review.created_at.desc())
+                    .offset(params.offset)
+                    .limit(params.limit)
+                )
+            ).scalars().all()
+        )
+    return Page.create([review_out(r) for r in rows], total, params)
+
+
+@router.get("/financial", summary="گزارش مالی ارائه‌دهنده")
+async def provider_financial(
+    user: User = Depends(require_roles(Role.PROVIDER, Role.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    provider = await _provider_for(db, user)
+    _, filters = await _provider_booking_filters(db, user)
+    if not filters:
+        return {"rows": [], "totals": {"revenue": 0, "commission": 0, "net": 0, "count": 0}}
+    rows_db = (
+        await db.execute(
+            select(Booking)
+            .options(selectinload(Booking.accommodation), selectinload(Booking.transport_offer))
+            .where(*filters, Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED]))
+            .order_by(Booking.created_at.desc())
+            .limit(200)
+        )
+    ).scalars().all()
+    rows = [
+        {
+            "id": str(b.id),
+            "code": b.code,
+            "title": b.title,
+            "date": (b.travel_date or b.check_in or b.created_at.date()).isoformat(),
+            "total": b.total,
+            "commission": int(b.total * provider.commission_rate / 100),
+            "net": b.total - int(b.total * provider.commission_rate / 100),
+        }
+        for b in rows_db
+    ]
+    revenue = sum(r["total"] for r in rows)
+    commission = sum(r["commission"] for r in rows)
+    return {
+        "rows": rows,
+        "totals": {"revenue": revenue, "commission": commission, "net": revenue - commission, "count": len(rows)},
+    }
 
 
 @router.get("/dashboard", response_model=ProviderDashboard, summary="داشبورد ارائه‌دهنده")
@@ -259,12 +479,12 @@ async def update_transport(
 ) -> Message:
     offer = await db.get(TransportOffer, offer_id)
     if offer is None or offer.provider_id != (await _provider_for(db, user)).id:
-        raise NotFoundError("سفرو یافت نشد.")
+        raise NotFoundError("سفر یافت نشد.")
     for field in ("price", "seats_available", "is_active", "description"):
         if field in payload:
             setattr(offer, field, payload[field])
     await db.commit()
-    return Message(message="سفرو به‌روزرسانی شد.")
+    return Message(message="سفر به‌روزرسانی شد.")
 
 
 @router.delete("/services/transport/{offer_id}", status_code=204, summary="حذف سفر")

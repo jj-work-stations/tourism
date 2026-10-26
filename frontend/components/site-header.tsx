@@ -28,8 +28,12 @@ import { cn } from "@/lib/utils";
 const NAV = [
   { href: "/", label: "خانه" },
   { href: "/destinations", label: "مقصدها" },
-  { href: "/search", label: "جستجوی سفر" },
-  { href: "/assistant", label: "دستیار هوشمند" },
+  { href: "/stays", label: "اقامتگاه‌ها" },
+  { href: "/attractions", label: "جاذبه‌ها" },
+  { href: "/experiences", label: "تجربه‌ها" },
+  { href: "/restaurants", label: "رستوران‌ها", secondary: true },
+  { href: "/map", label: "نقشه", secondary: true },
+  { href: "/search", label: "جستجوی سفر", secondary: true },
 ];
 
 export function Brand({ compact = false }: { compact?: boolean }) {
@@ -75,7 +79,7 @@ export function SiteHeader() {
       <div className="container-app flex h-[72px] items-center justify-between gap-3">
         <div className="flex items-center gap-8">
           <Brand />
-          <nav className="hidden items-center gap-1 lg:flex">
+          <nav className="hidden items-center gap-0.5 lg:flex">
             {NAV.map((item) => {
               const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
               return (
@@ -83,7 +87,8 @@ export function SiteHeader() {
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "rounded-xl px-3.5 py-2 text-sm font-medium transition",
+                    "rounded-xl px-2.5 py-2 text-[13px] font-medium transition xl:px-3.5 xl:text-sm",
+                    item.secondary && "hidden xl:block",
                     active
                       ? "bg-brand-50 text-brand-800"
                       : "text-ink/60 hover:bg-black/[0.04] hover:text-ink",

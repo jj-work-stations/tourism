@@ -9,6 +9,6 @@ const MapView = dynamic(() => import("@/components/map-view"), {
   loading: () => <div className="skeleton h-[420px] w-full" />,
 });
 
-export function DestinationMap({ data }: { data: MapData }) {
-  return <MapView data={data} />;
+export function DestinationMap({ data, height = 420 }: { data: MapData; height?: number }) {
+  return <MapView data={data} height={height} />;
 }

@@ -84,7 +84,7 @@ export function ExperienceCard({ experience }: { experience: Experience }) {
 
 export function AttractionCard({ attraction }: { attraction: Attraction }) {
   return (
-    <Link href={`/destinations/${attraction.destination_name.toLowerCase()}?tab=attractions`} className="card group flex gap-4 overflow-hidden p-3 transition hover:shadow-soft">
+    <Link href={`/map?dest=${attraction.destination_id}`} className="card card-hover group flex gap-4 overflow-hidden p-3">
       <SmartImage src={attraction.image_url} alt={attraction.name} className="h-24 w-24 shrink-0 rounded-2xl" fallbackClassName="h-24 w-24 rounded-2xl" />
       <div className="min-w-0 py-1">
         <h3 className="line-clamp-1 font-bold text-ink">{attraction.name}</h3>

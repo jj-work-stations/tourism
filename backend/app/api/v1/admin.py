@@ -10,14 +10,12 @@ from sqlalchemy.orm import selectinload
 
 from app.api.v1.bookings import BOOKING_LOADS
 from app.core.deps import require_roles
-from app.core.errors import NotFoundError
+from app.core.errors import ConflictError, NotFoundError
 from app.core.pagination import Page, PageParams
 from app.db.models import (
     Accommodation,
-    AccommodationType,
     AnalyticsEvent,
     Attraction,
-    AttractionCategory,
     AuditLog,
     Booking,
     BookingStatus,
@@ -26,15 +24,17 @@ from app.db.models import (
     CouponType,
     Destination,
     Experience,
-    ExperienceCategory,
+    Notification,
+    NotificationType,
+    Payment,
+    PaymentStatus,
     Provider,
-    ProviderType,
     Restaurant,
     Review,
     ReviewStatus,
     Role,
+    SupportTicket,
     TransportOffer,
-    TransportType,
     User,
 )
 from app.db.session import get_db
@@ -48,6 +48,7 @@ from app.schemas.admin import (
 from app.schemas.booking import BookingOut
 from app.schemas.common import Message
 from app.schemas.engagement import ReviewOut
+from app.services.notifications import notify
 from app.services.serializers import booking_out, review_out
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -282,6 +283,16 @@ async def update_user(
         setattr(user, field, value)
     await db.commit()
     await db.refresh(user)
+    db.add(
+        AuditLog(
+            user_id=_.id,
+            action="user.update",
+            entity_type="user",
+            entity_id=user.id,
+            data=payload.model_dump(exclude_unset=True),
+        )
+    )
+    await db.commit()
     return AdminUserOut(
         id=user.id, email=user.email, phone=user.phone, full_name=user.full_name,
         role=user.role.value, is_active=user.is_active, is_verified=user.is_verified,
@@ -350,6 +361,16 @@ async def moderate_review(
     review.status = ReviewStatus(status_value)
     await db.commit()
     await db.refresh(review)
+    db.add(
+        AuditLog(
+            user_id=_.id,
+            action="review.moderation",
+            entity_type="review",
+            entity_id=review.id,
+            data={"status": status_value, "rating": review.rating},
+        )
+    )
+    await db.commit()
     return review_out(review)
 
 
@@ -383,7 +404,17 @@ async def delete_review(
     review = await db.get(Review, review_id)
     if review is None:
         raise NotFoundError("نظر یافت نشد.")
+    log_data = {"status": review.status.value, "rating": review.rating}
     await db.delete(review)
+    db.add(
+        AuditLog(
+            user_id=_.id,
+            action="review.delete",
+            entity_type="review",
+            entity_id=review_id,
+            data=log_data,
+        )
+    )
     await db.commit()
     return Message(message="نظر حذف شد.")
 
@@ -450,6 +481,16 @@ async def upsert_campaign(
     if payload.get("ends_at"):
         campaign.ends_at = datetime.fromisoformat(payload["ends_at"])
     await db.commit()
+    db.add(
+        AuditLog(
+            user_id=_.id,
+            action="campaign.upsert",
+            entity_type="campaign",
+            entity_id=campaign.id,
+            data={"title": campaign.title, "updated": bool(campaign_id)},
+        )
+    )
+    await db.commit()
     return Message(message="کمپین ذخیره شد.")
 
 
@@ -504,6 +545,16 @@ async def upsert_destination(
                   "tags", "is_featured", "popularity"):
         if field in payload:
             setattr(dest, field, payload[field])
+    await db.commit()
+    db.add(
+        AuditLog(
+            user_id=_.id,
+            action="content.upsert",
+            entity_type="destination",
+            entity_id=dest.id,
+            data={"name": dest.name, "updated": bool(dest_id)},
+        )
+    )
     await db.commit()
     return Message(message="مقصد ذخیره شد.")
 
@@ -570,6 +621,16 @@ async def upsert_accommodation(
         if field in payload:
             setattr(acc, field, payload[field])
     await db.commit()
+    db.add(
+        AuditLog(
+            user_id=_.id,
+            action="content.upsert",
+            entity_type="accommodation",
+            entity_id=acc.id,
+            data={"name": acc.name, "updated": bool(acc_id)},
+        )
+    )
+    await db.commit()
     return Message(message="اقامتگاه ذخیره شد.")
 
 
@@ -633,6 +694,16 @@ async def upsert_attraction(
                   "suggested_visit_minutes", "is_featured", "is_active"):
         if field in payload:
             setattr(attr, field, payload[field])
+    await db.commit()
+    db.add(
+        AuditLog(
+            user_id=_.id,
+            action="content.upsert",
+            entity_type="attraction",
+            entity_id=attr.id,
+            data={"name": attr.name, "updated": bool(attr_id)},
+        )
+    )
     await db.commit()
     return Message(message="جاذبه ذخیره شد.")
 
@@ -699,6 +770,16 @@ async def upsert_experience(
         if field in payload:
             setattr(exp, field, payload[field])
     await db.commit()
+    db.add(
+        AuditLog(
+            user_id=_.id,
+            action="content.upsert",
+            entity_type="experience",
+            entity_id=exp.id,
+            data={"name": exp.name, "updated": bool(exp_id)},
+        )
+    )
+    await db.commit()
     return Message(message="تجربه ذخیره شد.")
 
 
@@ -761,6 +842,16 @@ async def upsert_restaurant(
         if field in payload:
             setattr(rest, field, payload[field])
     await db.commit()
+    db.add(
+        AuditLog(
+            user_id=_.id,
+            action="content.upsert",
+            entity_type="restaurant",
+            entity_id=rest.id,
+            data={"name": rest.name, "updated": bool(rest_id)},
+        )
+    )
+    await db.commit()
     return Message(message="رستوران ذخیره شد.")
 
 
@@ -773,10 +864,22 @@ async def get_settings(_: User = Depends(require_roles(Role.ADMIN))) -> SystemSe
 async def put_settings(
     payload: SystemSettings,
     _: User = Depends(require_roles(Role.ADMIN)),
+    db: AsyncSession = Depends(get_db),
 ) -> Message:
     settings = get_app_settings()
-    settings.update(payload.model_dump(exclude_unset=True))
+    changed = payload.model_dump(exclude_unset=True)
+    settings.update(changed)
     save_app_settings(settings)
+    db.add(
+        AuditLog(
+            user_id=_.id,
+            action="settings.update",
+            entity_type="settings",
+            entity_id=None,
+            data={"fields": sorted(changed.keys())},
+        )
+    )
+    await db.commit()
     return Message(message="تنظیمات ذخیره شد.")
 
 
@@ -812,3 +915,413 @@ def sluggify(text: str) -> str:
 
 
 from app.core.settings_store import get_app_settings, save_app_settings  # noqa: E402
+
+# ───────────────────────────── Coupons ─────────────────────────────
+
+
+@router.get("/coupons", summary="لیست کدهای تخفیف")
+async def list_coupons(
+    is_active: bool | None = Query(default=None),
+    _: User = Depends(require_roles(Role.ADMIN, Role.MARKETING_MANAGER)),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    filters = []
+    if is_active is not None:
+        filters.append(Coupon.is_active.is_(is_active))
+    rows = (
+        await db.execute(select(Coupon).where(*filters).order_by(Coupon.created_at.desc()))
+    ).scalars().all()
+    return [
+        {
+            "id": c.id,
+            "code": c.code,
+            "title": c.title,
+            "coupon_type": c.coupon_type.value,
+            "value": c.value,
+            "min_amount": c.min_amount,
+            "max_discount": c.max_discount,
+            "usage_limit": c.usage_limit,
+            "used_count": c.used_count,
+            "per_user_limit": c.per_user_limit,
+            "valid_from": c.valid_from,
+            "valid_to": c.valid_to,
+            "is_active": c.is_active,
+        }
+        for c in rows
+    ]
+
+
+@router.post("/coupons", summary="ایجاد/به‌روزرسانی کد تخفیف")
+async def upsert_coupon(
+    payload: dict,
+    _: User = Depends(require_roles(Role.ADMIN, Role.MARKETING_MANAGER)),
+    db: AsyncSession = Depends(get_db),
+) -> Message:
+    coupon_id = payload.get("id")
+    if coupon_id:
+        coupon = await db.get(Coupon, coupon_id)
+        if coupon is None:
+            raise NotFoundError("کد تخفیف یافت نشد.")
+    else:
+        code = str(payload.get("code") or "").strip().upper()
+        if not code:
+            raise NotFoundError("کد تخفیف الزامی است.")
+        existing = (
+            await db.execute(select(Coupon).where(Coupon.code == code))
+        ).scalar_one_or_none()
+        if existing is not None:
+            raise ConflictError("این کد تخفیف قبلاً ثبت شده است.")
+        coupon = Coupon(code=code)
+        db.add(coupon)
+    for field in ("code", "title", "description", "min_amount", "max_discount", "usage_limit", "per_user_limit", "is_active"):
+        if field in payload:
+            setattr(coupon, field, payload[field])
+    if payload.get("coupon_type"):
+        coupon.coupon_type = CouponType(payload["coupon_type"])
+    if payload.get("value") is not None:
+        coupon.value = int(payload["value"])
+    if payload.get("valid_from"):
+        coupon.valid_from = datetime.fromisoformat(payload["valid_from"])
+    if payload.get("valid_to"):
+        coupon.valid_to = datetime.fromisoformat(payload["valid_to"])
+    await db.commit()
+    db.add(
+        AuditLog(
+            user_id=_.id,
+            action="coupon.upsert",
+            entity_type="coupon",
+            entity_id=coupon.id,
+            data={"code": coupon.code, "updated": bool(coupon_id)},
+        )
+    )
+    await db.commit()
+    return Message(message="کد تخفیف ذخیره شد.")
+
+
+@router.patch("/coupons/{coupon_id}", summary="فعال/غیرفعال‌سازی کد تخفیف")
+async def toggle_coupon(
+    coupon_id: UUID,
+    payload: dict,
+    _: User = Depends(require_roles(Role.ADMIN, Role.MARKETING_MANAGER)),
+    db: AsyncSession = Depends(get_db),
+) -> Message:
+    coupon = await db.get(Coupon, coupon_id)
+    if coupon is None:
+        raise NotFoundError("کد تخفیف یافت نشد.")
+    if "is_active" in payload:
+        coupon.is_active = bool(payload["is_active"])
+    await db.commit()
+    db.add(
+        AuditLog(
+            user_id=_.id,
+            action="coupon.toggle",
+            entity_type="coupon",
+            entity_id=coupon.id,
+            data={"code": coupon.code, "is_active": coupon.is_active},
+        )
+    )
+    await db.commit()
+    return Message(message="کد تخفیف به‌روزرسانی شد.")
+
+
+# ───────────────────────────── Payments ─────────────────────────────
+
+
+@router.get("/payments", response_model=Page[dict], summary="لیست پرداخت‌ها")
+async def list_payments(
+    status_filter: str | None = Query(default=None, alias="status"),
+    params: PageParams = Depends(),
+    _: User = Depends(require_roles(*ADMIN_ROLES)),
+    db: AsyncSession = Depends(get_db),
+) -> Page[dict]:
+    filters = []
+    if status_filter:
+        filters.append(Payment.status == status_filter)
+    total = (await db.execute(select(func.count(Payment.id)).where(*filters))).scalar_one()
+    rows = (
+        await db.execute(
+            select(Payment)
+            .options(selectinload(Payment.booking))
+            .where(*filters)
+            .order_by(Payment.created_at.desc())
+            .offset(params.offset)
+            .limit(params.limit)
+        )
+    ).scalars().all()
+    items = [
+        {
+            "id": p.id,
+            "reference": p.reference,
+            "booking_id": p.booking_id,
+            "booking_code": p.booking.code if p.booking else None,
+            "amount": p.amount,
+            "currency": p.currency,
+            "method": p.method.value,
+            "status": p.status.value,
+            "gateway": p.gateway,
+            "refunded_amount": p.refunded_amount,
+            "paid_at": p.paid_at,
+            "created_at": p.created_at,
+        }
+        for p in rows
+    ]
+    return Page.create(items, total, params)
+
+
+# ───────────────────────────── Booking Control ─────────────────────────────
+
+
+@router.patch("/bookings/{booking_id}/status", response_model=BookingOut, summary="تغییر وضعیت رزرو")
+async def change_booking_status(
+    booking_id: UUID,
+    payload: dict,
+    _: User = Depends(require_roles(Role.ADMIN, Role.SUPPORT_AGENT)),
+    db: AsyncSession = Depends(get_db),
+) -> BookingOut:
+    booking = (
+        await db.execute(select(Booking).options(*BOOKING_LOADS).where(Booking.id == booking_id))
+    ).scalar_one_or_none()
+    if booking is None:
+        raise NotFoundError("رزرو یافت نشد.")
+    try:
+        new_status = BookingStatus(str(payload.get("status", "")))
+    except ValueError as exc:
+        raise NotFoundError("وضعیت نامعتبر است.") from exc
+    old_value = booking.status.value
+    booking.status = new_status
+    if new_status == BookingStatus.CONFIRMED:
+        booking.confirmed_at = datetime.now(UTC)
+    if new_status == BookingStatus.CANCELLED:
+        booking.cancelled_at = datetime.now(UTC)
+    await db.commit()
+    await db.refresh(booking)
+    db.add(
+        AuditLog(
+            user_id=_.id,
+            action="booking.status_change",
+            entity_type="booking",
+            entity_id=booking.id,
+            data={"from": old_value, "to": new_status.value},
+        )
+    )
+    await db.commit()
+    return booking_out(booking)
+
+
+@router.post("/bookings/{booking_id}/refund", response_model=Message, summary="بازگشت وجه")
+async def refund_booking(
+    booking_id: UUID,
+    payload: dict,
+    _: User = Depends(require_roles(Role.ADMIN, Role.SUPPORT_AGENT)),
+    db: AsyncSession = Depends(get_db),
+) -> Message:
+    amount = int(payload.get("amount") or 0)
+    booking = (
+        await db.execute(select(Booking).options(*BOOKING_LOADS).where(Booking.id == booking_id))
+    ).scalar_one_or_none()
+    if booking is None:
+        raise NotFoundError("رزرو یافت نشد.")
+    payment = next(
+        (p for p in booking.payments if p.status == PaymentStatus.PAID), None
+    )
+    if payment is None:
+        raise NotFoundError("پرداخت موفقی برای این رزرو ثبت نشده است.")
+    refund_amount = amount or (payment.amount - payment.refunded_amount)
+    if refund_amount <= 0:
+        raise NotFoundError("مبلغ بازگشت نامعتبر است.")
+    payment.refunded_amount += refund_amount
+    if payment.refunded_amount >= payment.amount:
+        payment.status = PaymentStatus.REFUNDED
+        payment.refunded_at = datetime.now(UTC)
+        booking.status = BookingStatus.REFUNDED
+    db.add(
+        AuditLog(
+            user_id=_.id,
+            action="booking.refund",
+            entity_type="booking",
+            entity_id=booking.id,
+            data={"amount": refund_amount, "payment_reference": payment.reference},
+        )
+    )
+    await db.commit()
+    return Message(message="بازگشت وجه با موفقیت انجام شد.")
+
+
+# ───────────────────────────── Provider Administration ─────────────────────────────
+
+
+@router.patch("/providers/{provider_id}", summary="تأیید/ویرایش ارائه‌دهنده")
+async def update_provider(
+    provider_id: UUID,
+    payload: dict,
+    _: User = Depends(require_roles(Role.ADMIN, Role.CONTENT_MANAGER)),
+    db: AsyncSession = Depends(get_db),
+) -> Message:
+    provider = await db.get(Provider, provider_id)
+    if provider is None:
+        raise NotFoundError("ارائه‌دهنده یافت نشد.")
+    if "is_verified" in payload:
+        provider.is_verified = bool(payload["is_verified"])
+    if "is_active" in payload:
+        provider.is_active = bool(payload["is_active"])
+    if payload.get("commission_rate") is not None:
+        provider.commission_rate = int(payload["commission_rate"])
+    await db.commit()
+    db.add(
+        AuditLog(
+            user_id=_.id,
+            action="provider.update",
+            entity_type="provider",
+            entity_id=provider.id,
+            data={k: payload[k] for k in ("is_verified", "is_active", "commission_rate") if k in payload},
+        )
+    )
+    await db.commit()
+    return Message(message="ارائه‌دهنده به‌روزرسانی شد.")
+
+
+# ───────────────────────────── Support Tickets ─────────────────────────────
+
+
+@router.get("/support", response_model=Page[dict], summary="تیکت‌های پشتیبانی")
+async def list_support_tickets(
+    status: str | None = None,
+    priority: str | None = None,
+    params: PageParams = Depends(),
+    _: User = Depends(require_roles(Role.ADMIN, Role.SUPPORT_AGENT)),
+    db: AsyncSession = Depends(get_db),
+) -> Page[dict]:
+    filters = []
+    if status:
+        filters.append(SupportTicket.status == status)
+    if priority:
+        filters.append(SupportTicket.priority == priority)
+    total = (await db.execute(select(func.count(SupportTicket.id)).where(*filters))).scalar_one()
+    rows = (
+        await db.execute(
+            select(SupportTicket, User.full_name)
+            .join(User, User.id == SupportTicket.user_id, isouter=True)
+            .where(*filters)
+            .order_by(SupportTicket.created_at.desc())
+            .offset(params.offset)
+            .limit(params.limit)
+        )
+    ).all()
+    items = [
+        {
+            "id": t.id,
+            "user_id": t.user_id,
+            "user_name": user_name or "کاربر ناشناس",
+            "subject": t.subject,
+            "category": t.category,
+            "message": t.message,
+            "status": t.status,
+            "priority": t.priority,
+            "response": t.response,
+            "created_at": t.created_at,
+        }
+        for t, user_name in rows
+    ]
+    return Page.create(items, total, params)
+
+
+@router.patch("/support/{ticket_id}", summary="پاسخ/تغییر وضعیت تیکت")
+async def update_support_ticket(
+    ticket_id: UUID,
+    payload: dict,
+    _: User = Depends(require_roles(Role.ADMIN, Role.SUPPORT_AGENT)),
+    db: AsyncSession = Depends(get_db),
+) -> Message:
+    ticket = await db.get(SupportTicket, ticket_id)
+    if ticket is None:
+        raise NotFoundError("تیکت یافت نشد.")
+    if "status" in payload:
+        ticket.status = str(payload["status"])
+    if "priority" in payload:
+        ticket.priority = str(payload["priority"])
+    if "response" in payload and payload["response"]:
+        ticket.response = str(payload["response"])
+        if "status" not in payload:
+            ticket.status = "answered"
+        ticket.assigned_to = _.id
+        await notify(
+            db,
+            ticket.user_id,
+            "پاسخ پشتیبانی",
+            f"به تیکت «{ticket.subject}» پاسخ داده شد.",
+            notification_type=NotificationType.SYSTEM,
+            data={"ticket_id": str(ticket.id)},
+        )
+    await db.commit()
+    db.add(
+        AuditLog(
+            user_id=_.id,
+            action="support.update",
+            entity_type="support_ticket",
+            entity_id=ticket.id,
+            data={
+                "status": ticket.status,
+                "priority": ticket.priority,
+                "responded": bool("response" in payload and payload["response"]),
+            },
+        )
+    )
+    await db.commit()
+    return Message(message="تیکت به‌روزرسانی شد.")
+
+
+# ───────────────────────────── Notifications ─────────────────────────────
+
+
+SUPPORT_AGENT_ONLY = (Role.ADMIN, Role.SUPPORT_AGENT, Role.MARKETING_MANAGER)
+
+
+@router.post("/notifications/broadcast", summary="ارسال اعلان گروهی")
+async def broadcast(
+    payload: dict,
+    _: User = Depends(require_roles(*SUPPORT_AGENT_ONLY)),
+    db: AsyncSession = Depends(get_db),
+) -> Message:
+    title = str(payload.get("title") or "").strip()
+    body = str(payload.get("body") or "").strip()
+    role = payload.get("role")
+    if not title or not body:
+        raise NotFoundError("عنوان و متن اعلان الزامی است.")
+    query = select(User.id).where(User.is_active.is_(True))
+    if role:
+        query = query.where(User.role == role)
+    rows = (await db.execute(query.limit(500))).scalars().all()
+    notification_type = NotificationType(payload.get("notification_type") or "system")
+    for user_id in rows:
+        db.add(
+            Notification(
+                user_id=user_id,
+                title=title,
+                body=body,
+                notification_type=notification_type,
+                data={"broadcast": True},
+            )
+        )
+    await db.commit()
+    db.add(
+        AuditLog(
+            user_id=_.id,
+            action="notification.broadcast",
+            entity_type="notification",
+            entity_id=None,
+            data={"title": title, "role": role, "recipients": len(rows)},
+        )
+    )
+    await db.commit()
+    return Message(message=f"اعلان برای {len(rows)} کاربر ارسال شد.")
+
+
+@router.get("/support/stats", summary="آمار تیکت‌ها")
+async def support_stats(
+    _: User = Depends(require_roles(*SUPPORT_AGENT_ONLY)),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    rows = (
+        await db.execute(select(SupportTicket.status, func.count(SupportTicket.id)).group_by(SupportTicket.status))
+    ).all()
+    return {"by_status": {status if isinstance(status, str) else str(status): count for status, count in rows}}

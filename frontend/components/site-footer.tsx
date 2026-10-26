@@ -9,8 +9,11 @@ const columns = [
     links: [
       { href: "/destinations", label: "مقصدهای محبوب" },
       { href: "/search?tab=transport", label: "بلیت هواپیما و قطار" },
-      { href: "/search?tab=stay", label: "رزرو هتل و اقامتگاه" },
-      { href: "/search?tab=experience", label: "تجربه‌های محلی" },
+      { href: "/stays", label: "رزرو هتل و اقامتگاه" },
+      { href: "/attractions", label: "جاذبه‌های گردشگری" },
+      { href: "/experiences", label: "تجربه‌های محلی" },
+      { href: "/restaurants", label: "رستوران‌ها و غذاهای محلی" },
+      { href: "/map", label: "نقشه هوشمند سفر" },
       { href: "/assistant", label: "برنامه‌ریز هوشمند" },
     ],
   },
@@ -21,7 +24,7 @@ const columns = [
       { href: "/account/bookings", label: "رزروهای من" },
       { href: "/account/trips", label: "سفرهای من" },
       { href: "/account/wallet", label: "کیف پول" },
-      { href: "/account/passport", label: "پاسپورت سفر" },
+      { href: "/account/rewards", label: "پاسپورت سفر" },
     ],
   },
   {

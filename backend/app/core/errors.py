@@ -31,6 +31,11 @@ class NotFoundError(AppError):
         super().__init__(message, code=code, status_code=status.HTTP_404_NOT_FOUND)
 
 
+class BadRequestError(AppError):
+    def __init__(self, message: str = "درخواست نامعتبر است.", code: str = "bad_request") -> None:
+        super().__init__(message, code=code, status_code=status.HTTP_400_BAD_REQUEST)
+
+
 class UnauthorizedError(AppError):
     def __init__(self, message: str = "لطفاً وارد حساب خود شوید.") -> None:
         super().__init__(message, code="unauthorized", status_code=status.HTTP_401_UNAUTHORIZED)

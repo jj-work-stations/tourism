@@ -6,9 +6,11 @@ import {
   Bell,
   Heart,
   LayoutDashboard,
+  LifeBuoy,
   Map,
   Settings2,
   Ticket,
+  Trophy,
   UserRound,
   Wallet,
 } from "lucide-react";
@@ -21,8 +23,10 @@ const LINKS = [
   { href: "/account/bookings", label: "رزروها و بلیت‌ها", icon: Ticket },
   { href: "/account/trips", label: "سفرهای من", icon: Map },
   { href: "/account/wallet", label: "کیف پول و امتیاز", icon: Wallet },
+  { href: "/account/rewards", label: "جایزه‌ها و پاسپورت", icon: Trophy },
   { href: "/account/favorites", label: "علاقه‌مندی‌ها", icon: Heart },
   { href: "/account/notifications", label: "اعلان‌ها", icon: Bell },
+  { href: "/support", label: "پشتیبانی و تیکت", icon: LifeBuoy },
   { href: "/account/profile", label: "پروفایل و امنیت", icon: UserRound },
   { href: "/account/preferences", label: "ترجیحات سفر", icon: Settings2 },
 ];
